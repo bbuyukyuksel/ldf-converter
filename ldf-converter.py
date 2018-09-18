@@ -9,51 +9,52 @@
 #########################################
 #########################################
 
-import sys
-uidnumber = 1000;
+import sys, json
+uidnumber = 1001;
 
 nereden = "OU=Kullanici,OU=Sehir,OU=Bolum,OU=Tasra,OU=NET,DC=NET,DC=GOV,DC=TR"
 nereye = "ou=Ankara,ou=Tasra,ou=Kullanıcılar,dc=site,dc=gov,dc=tr"
-samba_ou = "samba-ou";
-ldap_ou = "ldap-ou";
-domain = "domain";
-guid = "guid";
-homefolder = "homefolder";
+
+domain = "domain"
+guid = "guid"
 
 loginShell = "loginShell: /bin/bash\n"
 homeDirectory_fmt = "homeDirectory: /home/{}/{}"
 uidnumber_fmt = "uidnumber: {}\n"
 
 cur_state = 0
-states = 8
+states = 5
 
 
 def start_progress():
-    global homefolder, guid, domain, uidnumber, samba_ou, ldap_ou
+    global guid, domain, uidnumber
     print("\033[01;33m ")
-
     print("{} : {}".format("Nereden", nereden))
     print("{} : {}".format("Nereye", nereye))
-    print("{} : {}".format("samba_ou", samba_ou))
-    print("{} : {}".format("ldap_ou", ldap_ou))
     print("{} : {}".format("domain", domain))
     print("{} : {}".format("guid", guid))
-    print("{} : {}".format("homefolder", homefolder))
     print("\033[00m")
 
+    _guidNumber = "guidNumber: {}\n".format(str(guid))
+
     try:
-        with open("kullanicilar_org.ldf", "r") as fout :
+        with open("ExportUser.ldif", "r") as fout :
             print("#Progress is started")
-            with open ("kullanicilar_new.ldf", "w") as fin:
+            with open ("ImportUser.ldif", "w") as fin:
                 for line in fout:
-                    if  nereden in line:
+                    if nereden in line:
                         line = line.replace(nereden,nereye)
+
                     if "objectClass: user" in line:
                         line = line.replace("user", "posixAccount")
+
                     if "cn" in line:
                         line_sn_copy = line.replace("cn", "sn")
                         fin.write(line)
                         fin.write(line_sn_copy)
+                        continue
+
+                    if "givenName" in line:
                         continue
 
                     if "sAMAccountName" in line:
@@ -72,14 +73,16 @@ def start_progress():
                         _uidnumber = uidnumber_fmt.format(str(uidnumber))
                         uidnumber += 1
                         fin.write(_uidnumber)
+
+                        #guidNumber
+                        fin.write(_guidNumber)
                         continue
+
                     if "userPrincipalName" in line:
-                        line = line.replace("userPrincipalName", "mail")
+                        #line = line.replace("userPrincipalName", "mail")
+                        continue
 
                     fin.write(line)
-
-
-
     except:
         print("Beklenmedik Hata:", sys.exc_info()[1])
         raise
@@ -112,20 +115,47 @@ def state_progress():
 
 if __name__ == "__main__":
 
+    create_conf_file = False
+
     while(True):
         print("\033[01;35m #Adım[{}] \033[00m".format(str(cur_state)))
         if(cur_state == 0):
-            print("\033[01;34m Hoş Geldiniz \033[00m\n")
-            print("\033[00;34m")
-            print("Adım[{}] -> {}".format("1", "Nereden"))
-            print("Adım[{}] -> {}".format("2", "Nereye"))
-            print("Adım[{}] -> {}".format("3", "SAMBA OU"))
-            print("Adım[{}] -> {}".format("4", "LDAP OU"))
-            print("Adım[{}] -> {}".format("5", "Domain"))
-            print("Adım[{}] -> {}".format("6", "GUID"))
-            print("Adım[{}] -> {}".format("7", "Home Folder"))
-            print("Adım[{}] -> {}".format("8", "Progress"))
-            print("\033[00m")
+            try:
+                with open("ldf-converter.conf", "r") as conf:
+                    default_settings = json.load(conf)
+                    nereden = default_settings["nereden"]
+                    nereye = default_settings["nereye"]
+                    domain = default_settings["domain"]
+                    guid = default_settings["guid"]
+
+                    print("\033[01;33m ")
+                    print("{} : {}".format("Nereden", nereden))
+                    print("{} : {}".format("Nereye", nereye))
+                    print("{} : {}".format("domain", domain))
+                    print("{} : {}".format("guid", guid))
+                    print("\033[00m")
+
+
+                    status = input("Yukarıdaki ayarlarla devam etmek ister misiniz? [e/H] :")
+                    if status.lower() == "e" :
+                        cur_state = 4
+            except:
+                print("\n\n\033[00;31m\t\t####\033[00m")
+                print("\033[01;36m| ldf-converter conf dosyası bulunamadı!\n"
+                      "|\033[00;36m işlemler bitince otomatik olarak oluşturulacak.\033[00m")
+                print("\033[00;31m\t\t####\033[00m")
+                create_conf_file = True
+
+            print("\033[01;34m LDF Converter\033[00m")
+            print("\033[01;37m")
+            print("  + Adım[{}] -> {}".format("0", "VARSAYILAN DEĞERLERİ YÜKLE"))
+            print("  + Adım[{}] -> {}".format("1", "NEREDEN"))
+            print("  + Adım[{}] -> {}".format("2", "NEREYE"))
+            print("  + Adım[{}] -> {}".format("3", "DOMAIN"))
+            print("  + Adım[{}] -> {}".format("4", "GUID"))
+            print("  + Adım[{}] -> {}".format("5", "PROGRESS"))
+            print("\033[00m",end="")
+            print("\033[01;32m   #Herhangi bir adıma dallanmak için \033[00;31mgo:<Adım Numarası>\033[00m\n")
             cur_state += 1
 
         elif(cur_state == 1):
@@ -142,42 +172,43 @@ if __name__ == "__main__":
             if(status == "next"):
                 nereye = temp
 
-        elif(cur_state == 3):
-            print("Örnek -> ", samba_ou)
-            temp = input("SAMBA OU : ")
-            status = state_progress()
-            if(status == "next"):
-                samba_ou = temp
-
-        elif(cur_state == 4):
-            print("Örnek -> ", ldap_ou)
-            temp = input("LDAP OU : ")
-            status = state_progress()
-            if(status == "next"):
-                ldap_ou = temp
-
-        elif (cur_state == 5):
-            print("Örnek -> /home/<domain>",)
+        elif (cur_state == 3):
+            print("Örnek -> /home/",domain,sep="")
             temp = input("Domain : ")
             status = state_progress()
             if (status == "next"):
                 domain = temp
-        elif (cur_state == 6):
+        elif (cur_state == 4):
             print("Örnek -> ", guid)
             temp = input("GUID : ")
             status = state_progress()
             if (status == "next"):
                 guid = temp
 
-        elif (cur_state == 7):
-            print("Örnek -> ", homefolder)
-            temp = input("Home Folder : ")
-            status = state_progress()
-            if (status == "next"):
-                homefolder = temp
-        elif(cur_state == 8):
+        elif(cur_state == 5):
             print("\033[01;31m#Progress is started.. \033[00m")
             start_progress()
             print("\033[01;31m#Progress is finished.. \033[00m")
+            overwrite = True
+            over_ = input("\033[01;31m#Şuan ki ayarlarınız kaydedilsin mi? [E/h] : \033[00m")
+            if over_.lower() == "h":
+                overwrite = False
             break
+
+
+    try:
+        if create_conf_file or overwrite:
+            print("\033[01;36m#ldf-converter conf dosyası oluşturuluyor...\033[00m")
+            default_settings = {
+                "nereden": nereden,
+                "nereye": nereye,
+                "domain": domain,
+                "guid": guid
+            }
+        with open("ldf-converter.conf", "w") as conf:
+            json.dump(default_settings, conf, indent=4)
+    except :
+        print("\033[01;31m Beklenmedik Hata: \033[00m", sys.exc_info()[1])
+        raise
+
 print("\033[01;32m- END - \033[00m")
